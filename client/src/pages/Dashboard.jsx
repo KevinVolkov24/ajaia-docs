@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import "./Dashboard.css";
@@ -8,6 +7,7 @@ function Dashboard() {
 
     // Documents retrieved from the backend.
     const [ownedDocuments, setOwnedDocuments] = useState([]);
+    const [currentUser, setCurrentUser] = useState(null);
 
     // Loading and error states.
     const [loading, setLoading] = useState(true);
@@ -17,31 +17,58 @@ function Dashboard() {
     const [creatingDocument, setCreatingDocument] = useState(false);
     const [createError, setCreateError] = useState("");
 
-    // Retrieve documents when the dashboard loads.
-    useEffect(() => {
-        async function fetchDocuments() {
-            try {
-                const response = await fetch(
-                    "http://localhost:3000/api/documents"
-                );
-
-                if (!response.ok) {
-                    throw new Error("Failed to retrieve documents.");
+    // Retrieve the authenticated user and their documents.
+useEffect(() => {
+    async function loadDashboard() {
+        try {
+            // First, identify the currently logged-in user.
+            const userResponse = await fetch(
+                "http://localhost:3000/api/auth/me",
+                {
+                    credentials: "include"
                 }
+            );
 
-                const data = await response.json();
-
-                setOwnedDocuments(data.documents);
-            } catch (error) {
-                console.error("Error fetching documents:", error);
-                setError("Could not load your documents. Please try again.");
-            } finally {
-                setLoading(false);
+            // Redirect users who aren't logged in.
+            if (userResponse.status === 401) {
+                navigate("/login", { replace: true });
+                return;
             }
-        }
 
-        fetchDocuments();
-    }, []);
+            if (!userResponse.ok) {
+                throw new Error("Failed to retrieve user information.");
+            }
+
+            const userData = await userResponse.json();
+
+            setCurrentUser(userData.user);
+
+            // Next, retrieve the user's documents.
+            const documentsResponse = await fetch(
+                "http://localhost:3000/api/documents",
+                {
+                    credentials: "include"
+                }
+            );
+
+            if (!documentsResponse.ok) {
+                throw new Error("Failed to retrieve documents.");
+            }
+
+            const documentsData = await documentsResponse.json();
+
+            setOwnedDocuments(documentsData.documents);
+
+        } catch (error) {
+            console.error("Error loading dashboard:", error);
+            setError("Could not load your documents. Please try again.");
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    loadDashboard();
+}, [navigate]);
 
     // Format PostgreSQL timestamps for display.
     function formatDate(date) {
@@ -52,22 +79,6 @@ function Dashboard() {
         });
     }
 
-    // Temporary shared documents until sharing is implemented.
-    const sharedDocuments = [
-        {
-            id: "4",
-            title: "Team Project",
-            owner: "Alex",
-            lastModified: "November 11, 2026"
-        },
-        {
-            id: "5",
-            title: "Research Notes",
-            owner: "Jordan",
-            lastModified: "November 9, 2026"
-        }
-    ];
-
     async function createDocument() {
         try {
             setCreatingDocument(true);
@@ -76,7 +87,8 @@ function Dashboard() {
             const response = await fetch(
                 "http://localhost:3000/api/documents",
                 {
-                    method: "POST"
+                    method: "POST",
+                    credentials: "include"
                 }
             );
 
@@ -103,6 +115,27 @@ function Dashboard() {
         }
     }
 
+    async function handleLogout() {
+    try {
+        const response = await fetch(
+            "http://localhost:3000/api/auth/logout",
+            {
+                method: "POST",
+                credentials: "include"
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error("Unable to log out. Please try again.");
+        }
+
+        setCurrentUser(null);
+        navigate("/login");
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
     return (
         <div className="dashboard">
 
@@ -113,8 +146,14 @@ function Dashboard() {
                 </Link>
 
                 <div className="navbar-right">
-                    <span className="user-placeholder">Guest User</span>
-                </div>
+    <span className="user-placeholder">
+        {currentUser ? currentUser.name : "Loading..."}
+    </span>
+
+    <button onClick={handleLogout}>
+        Log Out
+    </button>
+</div>
             </header>
 
             {/* Main dashboard content */}
@@ -172,31 +211,11 @@ function Dashboard() {
                 </section>
 
                 {/* Shared documents */}
-                <section className="document-section">
-                    <h2>Shared with me</h2>
+<section className="document-section">
+    <h2>Shared with me</h2>
 
-                    <div className="document-grid">
-                        {sharedDocuments.map((document) => (
-                            <Link
-                                to={`/documents/${document.id}`}
-                                className="document-card"
-                                key={document.id}
-                            >
-                                <div className="document-icon">📄</div>
-
-                                <h3>{document.title}</h3>
-
-                                <p>
-                                    Shared by: {document.owner}
-                                </p>
-
-                                <p>
-                                    Last modified: {document.lastModified}
-                                </p>
-                            </Link>
-                        ))}
-                    </div>
-                </section>
+    <p>No documents have been shared with you yet.</p>
+</section>
 
             </main>
         </div>

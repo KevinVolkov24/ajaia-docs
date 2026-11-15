@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useEditor, EditorContent } from "@tiptap/react";
@@ -43,8 +42,11 @@ function DocumentEditor() {
                 setError("");
 
                 const response = await fetch(
-                    `http://localhost:3000/api/documents/${id}`
-                );
+    `http://localhost:3000/api/documents/${id}`,
+    {
+        credentials: "include"
+    }
+);
 
                 const data = await response.json();
 
@@ -122,6 +124,7 @@ function DocumentEditor() {
                 headers: {
                     "Content-Type": "application/json"
                 },
+                credentials: "include",
                 body: JSON.stringify({ content })
             }
         );
@@ -158,6 +161,7 @@ async function renameDocument() {
                 headers: {
                     "Content-Type": "application/json"
                 },
+                credentials: "include",
                 body: JSON.stringify({
                     title: newTitle
                 })
@@ -208,7 +212,8 @@ async function deleteDocument() {
         const response = await fetch(
             `http://localhost:3000/api/documents/${id}`,
             {
-                method: "DELETE"
+                method: "DELETE",
+                credentials: "include"
             }
         );
 

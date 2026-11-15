@@ -29,22 +29,24 @@ A lightweight, web-based document editor inspired by Google Docs. Users can crea
 
 ### Implemented
 - Create new documents.
-- View a dashboard displaying documents.
+- View a dashboard displaying user-specific documents.
 - Edit document content using a rich-text editor.
 - Format text using bold, italic, and underline.
 - Create headings and bulleted or numbered lists.
 - Save document content to PostgreSQL.
 - Rename existing documents.
 - Delete existing documents.
-- Register user accounts.
+- Register new user accounts.
+- Log in and log out of user accounts.
 - Hash passwords using bcrypt.
-- Configure server-side session storage using PostgreSQL.
-- Backend endpoints for login, logout, and retrieving the currently authenticated user.
+- Store server-side authentication sessions in PostgreSQL.
+- Retrieve information about the currently authenticated user.
+- Protect document endpoints using authentication middleware.
+- Associate documents with their authenticated owners.
 
 ### Known Limitations
-- Document ownership currently uses a temporary hardcoded test-user ID. Document endpoints have not yet been fully integrated with authenticated user sessions.
-- Document sharing is not fully implemented. The shared-document dashboard currently contains placeholder data.
-- File uploading and importing are not yet implemented.
+- Document sharing between users has not yet been implemented.
+- File uploading and importing (.txt, .md, .docx) are not yet implemented.
 - Real-time collaborative editing is not implemented.
 
 ## Project Structure
@@ -57,8 +59,10 @@ ajaia-docs/
 │   │   ├── pages/
 │   │   │   ├── Dashboard.jsx
 │   │   │   ├── DocumentEditor.jsx
-│   │   │   └── Login.jsx
-│   │   ├── Dashboard.css
+│   │   │   ├── Login.jsx
+|   |   |   └── Register.jsx
+|   |   ├── App.jsx
+│   │   ├── main.jsx
 │   │   └── index.css
 │   └── package.json
 │
@@ -259,7 +263,7 @@ Open that address in your browser to use the application.
 
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/api/documents` | Retrieves documents belonging to the test user. |
+| GET | `/api/documents` | Retrieves documents belonging to the authenticated user. |
 | POST | `/api/documents` | Creates a new document. |
 | GET | `/api/documents/:id` | Retrieves a document by ID. |
 | PUT | `/api/documents/:id` | Updates document content. |
@@ -283,4 +287,8 @@ The frontend and backend run independently during development. The frontend comm
 
 PostgreSQL runs in a Docker container, allowing the database to persist independently of the application processes.
 
-Real-time collaborative editing, file importing, and complete multi-user document-sharing functionality are outside the scope of the current implementation.
+Authentication is handled using server-side sessions stored in PostgreSQL. Passwords are hashed using bcrypt.
+
+Document access is restricted to authenticated users, and document ownership is determined by the currently logged-in user's session.
+
+Document sharing, file importing, and real-time collaborative editing are planned but have not yet been implemented.

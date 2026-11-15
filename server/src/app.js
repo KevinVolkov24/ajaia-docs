@@ -323,15 +323,27 @@ app.post("/api/auth/logout", (req, res) => {
 });
 
 
+ // Middleware to protect routes that require authentication.
+function requireAuth(req, res, next) {
+    if (!req.session.userId) {
+        return res.status(401).json({
+            status: "error",
+            message: "Authentication required. Please log in."
+        });
+    }
+
+    next();
+}
+
 // Retrieve documents belonging to the test user.
-app.get("/api/documents", async (req, res) => {
+app.get("/api/documents", requireAuth, async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT id, owner_id, title, content, created_at, updated_at
              FROM documents
              WHERE owner_id = $1
              ORDER BY updated_at DESC`,
-            [1]
+            [req.session.userId]
         );
 
         res.status(200).json({
@@ -349,7 +361,7 @@ app.get("/api/documents", async (req, res) => {
 });
 
 // Create a new document.
-app.post("/api/documents", async (req, res) => {
+app.post("/api/documents", requireAuth, async (req, res) => {
     try {
         const defaultContent = {
             type: "doc",
@@ -365,7 +377,7 @@ app.post("/api/documents", async (req, res) => {
              VALUES ($1, $2, $3::jsonb)
              RETURNING id, owner_id, title, content, created_at, updated_at`,
             [
-                1,
+                req.session.userId,
                 "Untitled Document",
                 JSON.stringify(defaultContent)
             ]
@@ -387,7 +399,7 @@ app.post("/api/documents", async (req, res) => {
 });
 
 // Retrieve a single document by its ID.
-app.get("/api/documents/:id", async (req, res) => {
+app.get("/api/documents/:id", requireAuth, async (req, res) => {
     const documentId = req.params.id;
 
     // Make sure the document ID contains only digits.
@@ -403,7 +415,7 @@ app.get("/api/documents/:id", async (req, res) => {
             `SELECT id, owner_id, title, content, created_at, updated_at
              FROM documents
              WHERE id = $1 AND owner_id = $2`,
-            [documentId, 1]
+            [documentId, req.session.userId]
         );
 
         // Check whether the requested document exists.
@@ -431,7 +443,7 @@ app.get("/api/documents/:id", async (req, res) => {
 
 
  // Update the content of an existing document.
-app.put("/api/documents/:id", async (req, res) => {
+app.put("/api/documents/:id", requireAuth, async (req, res) => {
     const documentId = req.params.id;
     const { content } = req.body;
 
@@ -465,7 +477,7 @@ app.put("/api/documents/:id", async (req, res) => {
             [
                 JSON.stringify(content),
                 documentId,
-                1
+                req.session.userId
             ]
         );
 
@@ -494,7 +506,7 @@ app.put("/api/documents/:id", async (req, res) => {
 
 
 // Rename an existing document.
-app.patch("/api/documents/:id", async (req, res) => {
+app.patch("/api/documents/:id", requireAuth, async (req, res) => {
     const documentId = req.params.id;
     const { title } = req.body;
 
@@ -528,7 +540,7 @@ app.patch("/api/documents/:id", async (req, res) => {
             [
                 title.trim(),
                 documentId,
-                1
+                req.session.userId
             ]
         );
 
@@ -557,7 +569,7 @@ app.patch("/api/documents/:id", async (req, res) => {
 
 
 // Delete an existing document.
-app.delete("/api/documents/:id", async (req, res) => {
+app.delete("/api/documents/:id", requireAuth, async (req, res) => {
     const documentId = req.params.id;
 
     // Validate the document ID.
@@ -573,7 +585,7 @@ app.delete("/api/documents/:id", async (req, res) => {
             `DELETE FROM documents
              WHERE id = $1 AND owner_id = $2
              RETURNING id, title`,
-            [documentId, 1]
+            [documentId, req.session.userId]
         );
 
         if (result.rows.length === 0) {
