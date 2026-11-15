@@ -56,6 +56,7 @@ function DocumentEditor() {
                     );
                 }
 
+                // Store the complete document retrieved from the backend.
                 setDocument(data.document);
                 setNewTitle(data.document.title);
 
@@ -75,7 +76,7 @@ function DocumentEditor() {
         if (editor && document) {
             editor.commands.setContent(document.content);
         }
-    }, [editor, document]);
+    }, [editor, document?.id]);
 
     if (loading) {
         return <p>Loading document...</p>;
@@ -176,9 +177,13 @@ async function renameDocument() {
             );
         }
 
-        // Update the document displayed in the editor.
-        setDocument(data.document);
-        setNewTitle(data.document.title);
+        // Update only the title, preserving the existing document content.
+        setDocument((previousDocument) => ({
+            ...previousDocument,
+            title: data.document.title
+        }));
+
+setNewTitle(data.document.title);
 
         setRenameMessage("Document renamed successfully!");
 
