@@ -1,0 +1,123 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+    font-family: Arial, Helvetica, sans-serif;
+    background-color: #f8f9fc;
+    color: #202124;
+}
+
+button,
+input {
+    font: inherit;
+}
+
+button {
+    cursor: pointer;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+
+/* Document editor layout */
+.document-editor {
+    max-width: 1000px;
+    margin: 30px auto;
+    padding: 20px;
+}
+
+.document-editor header {
+    margin-bottom: 20px;
+}
+
+.document-editor header h1 {
+    margin-top: 15px;
+}
+
+/* Formatting toolbar */
+.editor-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px 8px 0 0;
+    background-color: #f8f9fa;
+}
+
+.editor-toolbar button {
+    padding: 7px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.editor-toolbar button:hover {
+    background-color: #e9ecef;
+}
+
+/* Editable document area */
+.editor-content {
+    min-height: 500px;
+    padding: 30px;
+    border: 1px solid #ddd;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    background-color: white;
+}
+
+.editor-content .tiptap {
+    min-height: 440px;
+    outline: none;
+}
+
+.editor-content .tiptap h1 {
+    font-size: 2em;
+}
+
+.editor-content .tiptap h2 {
+    font-size: 1.5em;
+}
+
+.editor-content .tiptap ul,
+.editor-content .tiptap ol {
+    padding-left: 25px;
+}
+
+
+/* Document title controls */
+.document-title-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 15px 0;
+}
+
+.document-title-controls input {
+    width: 300px;
+    padding: 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+.document-title-controls button {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 5px;
+    background-color: #2563eb;
+    color: white;
+    cursor: pointer;
+}
+
+.document-title-controls button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}

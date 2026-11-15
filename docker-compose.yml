@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: ajaia-docs-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ajaia_user
+      POSTGRES_PASSWORD: ajaia_dev_password
+      POSTGRES_DB: ajaia_docs
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
