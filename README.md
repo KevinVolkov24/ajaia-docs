@@ -1,6 +1,6 @@
 # Ajaia Docs
 
-A lightweight, web-based document editor inspired by Google Docs. Users can create, edit, format, rename, save, and delete documents through a simple browser-based interface.
+A lightweight, web-based document editor inspired by Google Docs. Users can create, edit, format, rename, save, delete, and share documents through a simple browser-based interface.
 
 ## Technologies Used
 
@@ -24,10 +24,13 @@ A lightweight, web-based document editor inspired by Google Docs. Users can crea
 - Docker
 - Docker Compose
 - npm
+- Git
 
 ## Features
 
 ### Implemented
+
+**Document Management**
 - Create new documents.
 - View a dashboard displaying user-specific documents.
 - Edit document content using a rich-text editor.
@@ -36,6 +39,8 @@ A lightweight, web-based document editor inspired by Google Docs. Users can crea
 - Save document content to PostgreSQL.
 - Rename existing documents.
 - Delete existing documents.
+
+**User Authentication**
 - Register new user accounts.
 - Log in and log out of user accounts.
 - Hash passwords using bcrypt.
@@ -44,9 +49,20 @@ A lightweight, web-based document editor inspired by Google Docs. Users can crea
 - Protect document endpoints using authentication middleware.
 - Associate documents with their authenticated owners.
 
+**Document Sharing and Permissions**
+- Share documents with other registered users using their email addresses.
+- Assign Viewer or Editor permissions to shared users.
+- View a list of users who have access to a document.
+- Change an existing user's sharing permissions.
+- Revoke another user's access to a document.
+- Display documents shared with the authenticated user.
+- Allow Editors to modify and save shared documents.
+- Restrict Viewers to read-only access.
+- Restrict document renaming, deletion, and sharing management to document owners.
+- Enforce document permissions through backend authorization checks.
+
 ### Known Limitations
-- Document sharing between users has not yet been implemented.
-- File uploading and importing (.txt, .md, .docx) are not yet implemented.
+- File uploading and importing (`.txt`, `.md`, `.docx`) are not yet implemented.
 - Real-time collaborative editing is not implemented.
 
 ## Project Structure
@@ -60,8 +76,8 @@ ajaia-docs/
 │   │   │   ├── Dashboard.jsx
 │   │   │   ├── DocumentEditor.jsx
 │   │   │   ├── Login.jsx
-|   |   |   └── Register.jsx
-|   |   ├── App.jsx
+│   │   │   └── Register.jsx
+│   │   ├── App.jsx
 │   │   ├── main.jsx
 │   │   └── index.css
 │   └── package.json
@@ -74,7 +90,6 @@ ajaia-docs/
 │   │   │   └── seed.sql
 │   │   ├── app.js
 │   │   └── server.js
-│   ├── .env
 │   └── package.json
 │
 ├── docker-compose.yml
@@ -87,7 +102,7 @@ Install the following before running the application:
 
 - [Node.js](https://nodejs.org/) (includes npm)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- [Git](https://git-scm.com/) (optional)
+- [Git](https://git-scm.com/)
 
 ## Local Setup and Installation
 
@@ -140,6 +155,8 @@ These values correspond to the local development configuration in `docker-compos
 
 For production deployments, use a strong, randomly generated session secret and appropriate production database credentials.
 
+**Important:** Never commit your `.env` file or expose production credentials.
+
 ### 5. Start PostgreSQL
 
 From the project root directory, run:
@@ -162,15 +179,17 @@ From the project root, execute the following PowerShell command:
 Get-Content .\server\src\database\schema.sql -Raw | docker exec -i ajaia-docs-db psql -v ON_ERROR_STOP=1 -U ajaia_user -d ajaia_docs
 ```
 
-This creates the following tables:
+This creates the following application tables:
 
 | Table | Purpose |
 |---|---|
 | `users` | Stores registered user accounts. |
-| `documents` | Stores documents and their content. |
+| `documents` | Stores documents, ownership information, and content. |
 | `document_shares` | Stores document-sharing permissions. |
- 
-The session store also requires a `user_sessions` table. Create it by connecting to PostgreSQL:
+
+The session store also requires a `user_sessions` table.
+
+Connect to PostgreSQL:
 
 ```bash
 docker exec -it ajaia-docs-db psql -U ajaia_user -d ajaia_docs
@@ -243,6 +262,8 @@ Open that address in your browser to use the application.
 
 ## API Endpoints
 
+All document endpoints require an authenticated user session.
+
 ### Health Checks
 
 | Method | Endpoint | Description |
@@ -263,21 +284,30 @@ Open that address in your browser to use the application.
 
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/api/documents` | Retrieves documents belonging to the authenticated user. |
+| GET | `/api/documents` | Retrieves documents owned by the authenticated user. |
 | POST | `/api/documents` | Creates a new document. |
-| GET | `/api/documents/:id` | Retrieves a document by ID. |
-| PUT | `/api/documents/:id` | Updates document content. |
-| PATCH | `/api/documents/:id` | Renames a document. |
-| DELETE | `/api/documents/:id` | Deletes a document. |
+| GET | `/api/documents/shared` | Retrieves documents shared with the authenticated user. |
+| GET | `/api/documents/:id` | Retrieves an accessible document by ID. |
+| PUT | `/api/documents/:id` | Updates document content if the user has editing permission. |
+| PATCH | `/api/documents/:id` | Renames a document (owner only). |
+| DELETE | `/api/documents/:id` | Deletes a document (owner only). |
+
+### Document Sharing
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/documents/:id/shares` | Shares a document or updates an existing user's permission (owner only). |
+| GET | `/api/documents/:id/shares` | Retrieves users who have access to a document (owner only). |
+| DELETE | `/api/documents/:id/shares/:userId` | Revokes a user's document access (owner only). |
 
 ## Database Design
 
-The application uses PostgreSQL with three primary application tables and a session-storage table.
+The application uses PostgreSQL with four primary tables.
 
-- **users:** Stores user IDs, names, email addresses, password hashes, and account creation timestamps.
-- **documents:** Stores document IDs, owner IDs, titles, TipTap JSON content, and timestamps.
-- **document_shares:** Designed to associate documents with users and specify viewer or editor permissions.
-- **user_sessions:** Stores server-side login session information.
+- **`users`:** Stores user IDs, names, email addresses, password hashes, and account creation timestamps.
+- **`documents`:** Stores document IDs, owner IDs, titles, TipTap JSON content, and timestamps.
+- **`document_shares`:** Associates documents with users and specifies their sharing permissions (`viewer` or `editor`).
+- **`user_sessions`:** Stores server-side login session information.
 
 Document content is stored as JSONB to preserve the structured content generated by TipTap.
 
@@ -289,6 +319,12 @@ PostgreSQL runs in a Docker container, allowing the database to persist independ
 
 Authentication is handled using server-side sessions stored in PostgreSQL. Passwords are hashed using bcrypt.
 
-Document access is restricted to authenticated users, and document ownership is determined by the currently logged-in user's session.
+Document ownership and sharing permissions are enforced by the backend using the authenticated user's session.
 
-Document sharing, file importing, and real-time collaborative editing are planned but have not yet been implemented.
+Document owners have full control over their documents, including editing, renaming, deleting, and managing sharing permissions.
+
+Users with Editor permission can view, edit, and save shared documents but cannot rename or delete them. Users with Viewer permission can only view shared documents.
+
+Users without permission to access a document cannot retrieve or modify it through the backend API.
+
+File importing and real-time collaborative editing are planned but have not yet been implemented.

@@ -24,7 +24,14 @@ function DocumentEditor() {
 
     // Document deletion states.
     const [deleting, setDeleting] = useState(false);
-    const [deleteMessage, setDeleteMessage] = useState("");  
+    const [deleteMessage, setDeleteMessage] = useState("");
+
+    // Document sharing states.
+    const [shares, setShares] = useState([]);
+    const [shareEmail, setShareEmail] = useState("");
+    const [sharePermission, setSharePermission] = useState("viewer");
+    const [sharing, setSharing] = useState(false);
+    const [shareMessage, setShareMessage] = useState("");
 
     const editor = useEditor({
         extensions: [
@@ -32,6 +39,7 @@ function DocumentEditor() {
             Underline
         ],
         content: "",
+        editable: false,
         immediatelyRender: false
     });
 
@@ -42,11 +50,11 @@ function DocumentEditor() {
                 setError("");
 
                 const response = await fetch(
-    `http://localhost:3000/api/documents/${id}`,
-    {
-        credentials: "include"
-    }
-);
+                   `http://localhost:3000/api/documents/${id}`,
+                    {
+                        credentials: "include"
+                    }
+                );
 
                 const data = await response.json();
 
@@ -72,11 +80,28 @@ function DocumentEditor() {
         fetchDocument();
     }, [id]);
 
+    // Load sharing information once the document has loaded.
+    useEffect(() => {
+        if (document?.id === id && document?.permission === "owner") {
+            fetchShares();
+        }
+    }, [id, document?.id, document?.permission]);
+
     useEffect(() => {
         if (editor && document) {
             editor.commands.setContent(document.content);
         }
     }, [editor, document?.id]);
+
+    // Enable or disable editing based on the user's permission.
+    useEffect(() => {
+        if (editor && document) {
+            editor.setEditable(document.permission !== "viewer");
+        }
+    }, [editor, document?.permission]);
+
+    const isOwner = document?.permission === "owner";
+    const canEdit = document?.permission !== "viewer";
 
     if (loading) {
         return <p>Loading document...</p>;
@@ -107,6 +132,160 @@ function DocumentEditor() {
         );
     }
 
+    // Retrieve the users who have access to this document.
+    async function fetchShares() {
+        try {
+            const response = await fetch(
+                `http://localhost:3000/api/documents/${id}/shares`,
+                {
+                    credentials: "include"
+                }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message || "Failed to retrieve document shares."
+                );
+            }
+
+            setShares(data.shares);
+
+        } catch (error) {
+            console.error("Error retrieving document shares:", error);
+            setShareMessage("Could not retrieve sharing information.");
+        }
+    }
+
+    // Share this document with another user.
+    async function shareDocument() {
+        try {
+            setSharing(true);
+            setShareMessage("");
+
+            const response = await fetch(
+                `http://localhost:3000/api/documents/${id}/shares`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    credentials: "include",
+                    body: JSON.stringify({
+                        email: shareEmail,
+                        permission: sharePermission
+                    })
+                }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message || "Failed to share document."
+                );
+            }
+
+            setShareMessage("Document shared successfully!");
+            setShareEmail("");
+
+            // Refresh the list of people with access.
+            await fetchShares();
+
+        } catch (error) {
+            console.error("Error sharing document:", error);
+            setShareMessage(
+                error.message || "Could not share document."
+            );
+
+        } finally {
+            setSharing(false);
+        }
+    }
+
+    // Change a user's document permission.
+    async function updateSharePermission(userId, permission) {
+        try {
+            setShareMessage("");
+
+            const share = shares.find(
+                (item) => String(item.user_id) === String(userId)
+            );
+
+            const response = await fetch(
+                `http://localhost:3000/api/documents/${id}/shares`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    credentials: "include",
+                    body: JSON.stringify({
+                        email: share.email,
+                        permission
+                    })
+                }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message || "Failed to update permission."
+                );
+            }
+
+            setShareMessage("Permission updated successfully!");
+            await fetchShares();
+
+        } catch (error) {
+            console.error("Error updating permission:", error);
+            setShareMessage(error.message || "Could not update permission.");
+        }
+    }
+
+    // Remove a user's access to this document.
+    async function revokeShare(userId) {
+        const confirmed = window.confirm(
+            "Are you sure you want to remove this user's access?"
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            setShareMessage("");
+
+            const response = await fetch(
+                `http://localhost:3000/api/documents/${id}/shares/${userId}`,
+                {
+                    method: "DELETE",
+                    credentials: "include"
+                }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    data.message || "Failed to revoke document access."
+                );
+            }
+
+            setShareMessage("Document access revoked successfully!");
+
+            await fetchShares();
+
+        } catch (error) {
+            console.error("Error revoking access:", error);
+            setShareMessage(
+                error.message || "Could not revoke document access."
+            );
+        }
+    }
+    
     async function saveDocument() {
     if (!editor) {
         return;
@@ -253,108 +432,189 @@ async function deleteDocument() {
 
     <h1>{document.title}</h1>
 
-    <div className="document-title-controls">
-        <input
-            type="text"
-            value={newTitle}
-            onChange={(event) => setNewTitle(event.target.value)}
-            placeholder="Document title"
-            maxLength={255}
-        />
+    {isOwner && (
+    <>
+        <div className="document-title-controls">
+            <input
+                type="text"
+                value={newTitle}
+                onChange={(event) => setNewTitle(event.target.value)}
+                placeholder="Document title"
+                maxLength={255}
+            />
 
-        <button
-            onClick={renameDocument}
-            disabled={renaming}
-        >
-            {renaming ? "Renaming..." : "Rename"}
-        </button>
-    </div>
+            <button
+                onClick={renameDocument}
+                disabled={renaming}
+            >
+                {renaming ? "Renaming..." : "Rename"}
+            </button>
+        </div>
 
-    {renameMessage && <p>{renameMessage}</p>}
+        {renameMessage && <p>{renameMessage}</p>}
+    </>
+)}
 
+    {canEdit && (
     <button
         onClick={saveDocument}
         disabled={saving}
     >
         {saving ? "Saving..." : "Save"}
     </button>
+)}
 
-    <button
-    onClick={deleteDocument}
-    disabled={deleting}
->
-    {deleting ? "Deleting..." : "Delete"}
-</button>
+    {isOwner && (
+    <>
+        <button
+            onClick={deleteDocument}
+            disabled={deleting}
+        >
+            {deleting ? "Deleting..." : "Delete"}
+        </button>
 
-{deleteMessage && <p>{deleteMessage}</p>}
+        {deleteMessage && <p>{deleteMessage}</p>}
+    </>
+)}
 
     {saveMessage && <p>{saveMessage}</p>}
 </header>
 
-            <div className="editor-toolbar">
-                <ToolbarButton
-                    label="B"
-                    active={editor.isActive("bold")}
-                    onClick={() => editor.chain().focus().toggleBold().run()}
-                />
+            {canEdit && (
+    <div className="editor-toolbar">
+        <ToolbarButton
+            label="B"
+            active={editor.isActive("bold")}
+            onClick={() => editor.chain().focus().toggleBold().run()}
+        />
 
-                <ToolbarButton
-                    label="I"
-                    active={editor.isActive("italic")}
-                    onClick={() => editor.chain().focus().toggleItalic().run()}
-                />
+        <ToolbarButton
+            label="I"
+            active={editor.isActive("italic")}
+            onClick={() => editor.chain().focus().toggleItalic().run()}
+        />
 
-                <ToolbarButton
-                    label="U"
-                    active={editor.isActive("underline")}
-                    onClick={() => editor.chain().focus().toggleUnderline().run()}
-                />
+        <ToolbarButton
+            label="U"
+            active={editor.isActive("underline")}
+            onClick={() => editor.chain().focus().toggleUnderline().run()}
+        />
 
-                <span>|</span>
+        <span>|</span>
 
-                <ToolbarButton
-                    label="Heading 1"
-                    active={editor.isActive("heading", { level: 1 })}
-                    onClick={() =>
-                        editor.chain().focus().toggleHeading({ level: 1 }).run()
-                    }
-                />
+        <ToolbarButton
+            label="Heading 1"
+            active={editor.isActive("heading", { level: 1 })}
+            onClick={() =>
+                editor.chain().focus().toggleHeading({ level: 1 }).run()
+            }
+        />
 
-                <ToolbarButton
-                    label="Heading 2"
-                    active={editor.isActive("heading", { level: 2 })}
-                    onClick={() =>
-                        editor.chain().focus().toggleHeading({ level: 2 }).run()
-                    }
-                />
+        <ToolbarButton
+            label="Heading 2"
+            active={editor.isActive("heading", { level: 2 })}
+            onClick={() =>
+                editor.chain().focus().toggleHeading({ level: 2 }).run()
+            }
+        />
 
-                <ToolbarButton
-                    label="Paragraph"
-                    active={editor.isActive("paragraph")}
-                    onClick={() =>
-                        editor.chain().focus().setParagraph().run()
-                    }
-                />
+        <ToolbarButton
+            label="Paragraph"
+            active={editor.isActive("paragraph")}
+            onClick={() =>
+                editor.chain().focus().setParagraph().run()
+            }
+        />
 
-                <span>|</span>
+        <span>|</span>
 
-                <ToolbarButton
-                    label="• List"
-                    active={editor.isActive("bulletList")}
-                    onClick={() =>
-                        editor.chain().focus().toggleBulletList().run()
-                    }
-                />
+        <ToolbarButton
+            label="• List"
+            active={editor.isActive("bulletList")}
+            onClick={() =>
+                editor.chain().focus().toggleBulletList().run()
+            }
+        />
 
-                <ToolbarButton
-                    label="1. List"
-                    active={editor.isActive("orderedList")}
-                    onClick={() =>
-                        editor.chain().focus().toggleOrderedList().run()
-                    }
-                />
-            </div>
+        <ToolbarButton
+            label="1. List"
+            active={editor.isActive("orderedList")}
+            onClick={() =>
+                editor.chain().focus().toggleOrderedList().run()
+            }
+        />
+    </div>
+)}
+            {isOwner && (
+                <section className="document-sharing">
+                    <h2>Share Document</h2>
 
+                    <form
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            shareDocument();
+                        }}
+                    >
+                        <input
+                            type="email"
+                            value={shareEmail}
+                            onChange={(event) => setShareEmail(event.target.value)}
+                            placeholder="Enter email address"
+                            required
+                        />
+
+                        <select
+                            value={sharePermission}
+                            onChange={(event) => setSharePermission(event.target.value)}
+                        >
+                            <option value="viewer">Viewer</option>
+                            <option value="editor">Editor</option>
+                        </select>
+
+                        <button type="submit" disabled={sharing}>
+                            {sharing ? "Sharing..." : "Share"}
+                        </button>
+                    </form>
+
+                    {shareMessage && <p>{shareMessage}</p>}
+
+                    <h3>People with access</h3>
+
+                    {shares.length === 0 ? (
+                        <p>This document hasn't been shared with anyone yet.</p>
+                    ) : (
+                        <ul>
+                            {shares.map((share) => (
+                                <li key={share.user_id}>
+                                    <strong>{share.name}</strong>
+                                    {" "}({share.email})
+
+                                    <select
+                                        value={share.permission}
+                                        onChange={(event) =>
+                                            updateSharePermission(
+                                                share.user_id,
+                                                event.target.value
+                                            )
+                                        }
+                                    >
+                                        <option value="viewer">Viewer</option>
+                                        <option value="editor">Editor</option>
+                                    </select>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => revokeShare(share.user_id)}
+                                    >
+                                        Remove
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </section>
+            )}
+            
             <main className="editor-content">
                 <EditorContent editor={editor} />
             </main>

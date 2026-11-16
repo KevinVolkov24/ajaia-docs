@@ -398,6 +398,44 @@ app.post("/api/documents", requireAuth, async (req, res) => {
     }
 });
 
+// Get documents shared with the logged-in user.
+app.get("/api/documents/shared", requireAuth, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT
+                documents.id,
+                documents.owner_id,
+                documents.title,
+                documents.created_at,
+                documents.updated_at,
+                document_shares.permission,
+                users.name AS owner_name,
+                users.email AS owner_email
+             FROM document_shares
+             JOIN documents
+                ON document_shares.document_id = documents.id
+             JOIN users
+                ON documents.owner_id = users.id
+             WHERE document_shares.user_id = $1
+             ORDER BY documents.updated_at DESC`,
+            [req.session.userId]
+        );
+
+        res.status(200).json({
+            status: "success",
+            documents: result.rows
+        });
+
+    } catch (error) {
+        console.error("Failed to retrieve shared documents:", error);
+
+        res.status(500).json({
+            status: "error",
+            message: "Could not retrieve shared documents."
+        });
+    }
+});
+
 // Retrieve a single document by its ID.
 app.get("/api/documents/:id", requireAuth, async (req, res) => {
     const documentId = req.params.id;
@@ -412,9 +450,26 @@ app.get("/api/documents/:id", requireAuth, async (req, res) => {
 
     try {
         const result = await pool.query(
-            `SELECT id, owner_id, title, content, created_at, updated_at
-             FROM documents
-             WHERE id = $1 AND owner_id = $2`,
+            `SELECT
+                documents.id,
+                documents.owner_id,
+                documents.title,
+                documents.content,
+                documents.created_at,
+                documents.updated_at,
+                CASE
+                    WHEN documents.owner_id = $2 THEN 'owner'
+                    ELSE document_shares.permission
+                END AS permission
+            FROM documents
+            LEFT JOIN document_shares
+                ON documents.id = document_shares.document_id
+                AND document_shares.user_id = $2
+            WHERE documents.id = $1
+                AND (
+                    documents.owner_id = $2
+                    OR document_shares.user_id = $2
+                )`,
             [documentId, req.session.userId]
         );
 
@@ -470,10 +525,19 @@ app.put("/api/documents/:id", requireAuth, async (req, res) => {
     try {
         const result = await pool.query(
             `UPDATE documents
-             SET content = $1::jsonb,
-                 updated_at = CURRENT_TIMESTAMP
-             WHERE id = $2 AND owner_id = $3
-             RETURNING id, owner_id, title, content, updated_at`,
+            SET content = $1, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2
+                AND (
+                    owner_id = $3
+                    OR EXISTS (
+                        SELECT 1
+                        FROM document_shares
+                        WHERE document_shares.document_id = documents.id
+                            AND document_shares.user_id = $3
+                            AND document_shares.permission = 'editor'
+                )
+            )
+            RETURNING id, owner_id, title, content, updated_at`,
             [
                 JSON.stringify(content),
                 documentId,
@@ -567,6 +631,225 @@ app.patch("/api/documents/:id", requireAuth, async (req, res) => {
     }
 });
 
+
+// Get the users who have access to a document.
+app.get("/api/documents/:id/shares", requireAuth, async (req, res) => {
+    const documentId = req.params.id;
+
+    if (!/^\d+$/.test(documentId)) {
+        return res.status(400).json({
+            status: "error",
+            message: "Invalid document ID."
+        });
+    }
+
+    try {
+        // Verify that the logged-in user owns the document.
+        const documentResult = await pool.query(
+            `SELECT id
+             FROM documents
+             WHERE id = $1 AND owner_id = $2`,
+            [documentId, req.session.userId]
+        );
+
+        if (documentResult.rows.length === 0) {
+            return res.status(404).json({
+                status: "error",
+                message: "Document not found."
+            });
+        }
+
+        // Retrieve everyone the document is shared with.
+        const result = await pool.query(
+            `SELECT
+                document_shares.user_id,
+                document_shares.permission,
+                document_shares.shared_at,
+                users.name,
+                users.email
+             FROM document_shares
+             JOIN users
+                ON document_shares.user_id = users.id
+             WHERE document_shares.document_id = $1
+             ORDER BY document_shares.shared_at DESC`,
+            [documentId]
+        );
+
+        res.status(200).json({
+            status: "success",
+            shares: result.rows
+        });
+
+    } catch (error) {
+        console.error("Failed to retrieve document shares:", error);
+
+        res.status(500).json({
+            status: "error",
+            message: "Could not retrieve document shares."
+        });
+    }
+});
+
+
+ // Revoke a user's access to a shared document.
+app.delete("/api/documents/:id/shares/:userId", requireAuth, async (req, res) => {
+    const { id: documentId, userId } = req.params;
+
+    if (!/^\d+$/.test(documentId) || !/^\d+$/.test(userId)) {
+        return res.status(400).json({
+            status: "error",
+            message: "Invalid document ID or user ID."
+        });
+    }
+
+    try {
+        // Verify that the logged-in user owns the document.
+        const documentResult = await pool.query(
+            `SELECT id
+             FROM documents
+             WHERE id = $1 AND owner_id = $2`,
+            [documentId, req.session.userId]
+        );
+
+        if (documentResult.rows.length === 0) {
+            return res.status(404).json({
+                status: "error",
+                message: "Document not found."
+            });
+        }
+
+        // Remove the user's sharing permission.
+        const result = await pool.query(
+            `DELETE FROM document_shares
+             WHERE document_id = $1 AND user_id = $2
+             RETURNING document_id, user_id`,
+            [documentId, userId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                status: "error",
+                message: "This user does not have access to the document."
+            });
+        }
+
+        res.status(200).json({
+            status: "success",
+            message: "Document access revoked successfully!"
+        });
+
+    } catch (error) {
+        console.error("Failed to revoke document access:", error);
+
+        res.status(500).json({
+            status: "error",
+            message: "Could not revoke document access."
+        });
+    }
+});
+
+// Share an existing document with another user.
+app.post("/api/documents/:id/shares", requireAuth, async (req, res) => {
+    const documentId = req.params.id;
+    const { email, permission } = req.body;
+
+    // Validate the document ID.
+    if (!/^\d+$/.test(documentId)) {
+        return res.status(400).json({
+            status: "error",
+            message: "Invalid document ID."
+        });
+    }
+
+    // Validate the recipient's email.
+    if (
+        typeof email !== "string" ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+    ) {
+        return res.status(400).json({
+            status: "error",
+            message: "Please provide a valid email address."
+        });
+    }
+
+    // Validate the sharing permission.
+    if (!["viewer", "editor"].includes(permission)) {
+        return res.status(400).json({
+            status: "error",
+            message: "Permission must be either viewer or editor."
+        });
+    }
+
+    try {
+        // Verify that the logged-in user owns the document.
+        const documentResult = await pool.query(
+            `SELECT id
+             FROM documents
+             WHERE id = $1 AND owner_id = $2`,
+            [documentId, req.session.userId]
+        );
+
+        if (documentResult.rows.length === 0) {
+            return res.status(404).json({
+                status: "error",
+                message: "Document not found."
+            });
+        }
+
+        // Find the recipient by email address.
+        const userResult = await pool.query(
+            `SELECT id, name, email
+             FROM users
+             WHERE LOWER(email) = LOWER($1)`,
+            [email.trim()]
+        );
+
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({
+                status: "error",
+                message: "No account exists with that email address."
+            });
+        }
+
+        const recipient = userResult.rows[0];
+
+        // Prevent owners from sharing documents with themselves.
+        if (String(recipient.id) === String(req.session.userId)) {
+            return res.status(400).json({
+                status: "error",
+                message: "You cannot share a document with yourself."
+            });
+        }
+
+        // Create or update the sharing record.
+        const shareResult = await pool.query(
+            `INSERT INTO document_shares
+                (document_id, user_id, permission)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (document_id, user_id)
+             DO UPDATE SET permission = EXCLUDED.permission
+             RETURNING document_id, user_id, permission, shared_at`,
+            [documentId, recipient.id, permission]
+        );
+
+        res.status(200).json({
+            status: "success",
+            message: "Document shared successfully!",
+            share: {
+                ...shareResult.rows[0],
+                user: recipient
+            }
+        });
+
+    } catch (error) {
+        console.error("Failed to share document:", error);
+
+        res.status(500).json({
+            status: "error",
+            message: "Could not share document."
+        });
+    }
+});
 
 // Delete an existing document.
 app.delete("/api/documents/:id", requireAuth, async (req, res) => {

@@ -8,6 +8,7 @@ function Dashboard() {
     // Documents retrieved from the backend.
     const [ownedDocuments, setOwnedDocuments] = useState([]);
     const [currentUser, setCurrentUser] = useState(null);
+    const [sharedDocuments, setSharedDocuments] = useState([]);
 
     // Loading and error states.
     const [loading, setLoading] = useState(true);
@@ -58,6 +59,22 @@ useEffect(() => {
             const documentsData = await documentsResponse.json();
 
             setOwnedDocuments(documentsData.documents);
+
+            // Retrieve documents shared with the logged-in user.
+            const sharedResponse = await fetch(
+                "http://localhost:3000/api/documents/shared",
+                {
+                    credentials: "include"
+                }
+            );
+
+            if (!sharedResponse.ok) {
+                throw new Error("Failed to retrieve shared documents.");
+            }
+
+            const sharedData = await sharedResponse.json();
+
+            setSharedDocuments(sharedData.documents);
 
         } catch (error) {
             console.error("Error loading dashboard:", error);
@@ -211,10 +228,42 @@ useEffect(() => {
                 </section>
 
                 {/* Shared documents */}
+                {/* Shared documents */}
 <section className="document-section">
     <h2>Shared with me</h2>
 
-    <p>No documents have been shared with you yet.</p>
+    {!loading && !error && sharedDocuments.length === 0 && (
+        <p>No documents have been shared with you yet.</p>
+    )}
+
+    {!loading && !error && sharedDocuments.length > 0 && (
+        <div className="document-grid">
+            {sharedDocuments.map((document) => (
+                <Link
+                    to={`/documents/${document.id}`}
+                    className="document-card"
+                    key={document.id}
+                >
+                    <div className="document-icon">📄</div>
+
+                    <h3>{document.title}</h3>
+
+                    <p>
+                        Shared by: {document.owner_name}
+                    </p>
+
+                    <p>
+                        Permission: {document.permission}
+                    </p>
+
+                    <p>
+                        Last modified:{" "}
+                        {formatDate(document.updated_at)}
+                    </p>
+                </Link>
+            ))}
+        </div>
+    )}
 </section>
 
             </main>
